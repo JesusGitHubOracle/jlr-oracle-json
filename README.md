@@ -1,11 +1,9 @@
-# Oracle JSON:  from relational to document store
-### "Hybrid Tables" - Ordinary tables with JSON datatype columns
+# Oracle JSON:  From relational to document store
+### "Hybrid Tables" - Oracle tables with JSON datatype columns
 - Creating a Table with JSON columns
 - Loading a JSON collection from an external table 
-### 
-### JSON Collection tables (26ai)
+### JSON Collection tables
 - Creating a JSON Collection Table
-- Loading JSON documents via external tables and DBMS_CLOUD 
 - Sample queries using SQL/JSON functions: JSON_VALUE,JSON_EXISTS,JSON_QUERY
 ### JSON Collection Views
 - Creatign a JSON Collection view 
