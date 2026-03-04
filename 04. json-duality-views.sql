@@ -2,6 +2,7 @@
 ---------------------------------------------------------------------------------
 -- SALES_HISTORY_DUALITY_VIEW - JSON RELATIONAL DUALITY Views 
 -- CUSTOMERS, SALES, PRODUCTS relational tables, SH sample schema 
+-- https://github.com/oracle-samples/db-sample-schemas/tree/main/sales_history
 ----------------------------------------------------------------------------------
 
  
