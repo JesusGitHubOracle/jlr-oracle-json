@@ -9,7 +9,7 @@
 ### JSON Relational Duality Views
 - Customer / Products /Sales relational  data model via  a duality view 
 ### Oracle JSON Collection Views
-- Creating a Relation view over JSON Table
+- Creating a Relational view over a JSON Table
 - Creating a JSON Collection View 
 - Using JSON collection Views with SUM, Group By , AVG and Window function
 ### Materizalized Views over JSON Data
