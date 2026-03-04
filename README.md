@@ -33,4 +33,9 @@
 ### Monitoring JSON Queries 
 - SQL Monitor report using DBMS_SQLDIAG
  
+ # License
  
+Copyright (c) 2026 Oracle and/or its affiliates.
+ 
+Licensed under the Universal Permissive License (UPL), Version 1.0.
+See [LICENSE](https://github.com/JesusGitHubOracle/jlr-oracle-json/blob/main/LICENSE.txt) for more details.
