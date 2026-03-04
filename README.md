@@ -8,11 +8,11 @@
 - Querying JSON Tables using Common Table Expressions 
 ### JSON Indexing
 -  Unique Index
--- Composite Index  
--- Search Index
--- Multivalue Index
--- Partial Index
--- Explain Plans for Queries using Indexes 
+- Composite Index  
+- Search Index
+- Multivalue Index
+- Partial Index
+- Explain Plans for Queries using Indexes 
 ### JSON Relational Duality Views
 - Customer / Products /Sales relational  data model via  a duality view 
 ### Oracle JSON Collection Views
