@@ -71,7 +71,7 @@ Demonstrates JSON collection table compression options, including:
 * `COMPRESSION MEDIUM`
 * `COMPRESSION HIGH`
 
-### `10. json-montoring.sql`
+### `10. json-monitoring.sql`
 
 Shows how to monitor JSON queries using SQL Monitor reports and `DBMS_SQLDIAG`.
 
