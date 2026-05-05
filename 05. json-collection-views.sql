@@ -98,7 +98,7 @@ CREATE OR REPLACE JSON COLLECTION VIEW PURCHASEORDER_TOT_PRC_CV AS
                         quantity number PATH '$.Quantity',
                         NESTED PATH '$.Part[*]'
                         COLUMNS (
-                        itemdesc varchar2(50) PATH '$.Description',
+                        itemdesc CLOB PATH '$.Description',
                         upccode  number PATH '$.UPCCode',
                         unitprice number PATH '$.UnitPrice')
                       )
@@ -126,7 +126,8 @@ CREATE OR REPLACE JSON COLLECTION VIEW PURCHASEORDER_AVG_PRC_CV AS
        jt.quantity,
        jt.unitprice,
        jt.total_item_price,
-       jt.average_total_item_price}
+       jt.average_total_item_price
+       }
     FROM (
     SELECT 
            ponumber, 
@@ -146,15 +147,18 @@ CREATE OR REPLACE JSON COLLECTION VIEW PURCHASEORDER_AVG_PRC_CV AS
                         special   varchar2(30)   PATH '$."Special Instructions"',
                         NESTED PATH '$.LineItems[*]'
                             COLUMNS (
-                                itemnumber number PATH '$.ItemNumber',
-                                  itemdesc varchar2(50) PATH '$.Description',
-                                  quantity number PATH '$.Quantity',
-                                  upccode  number PATH '$.UPCCode',
-                                  unitprice number PATH '$.UnitPrice')
+                                itemnumber number PATH '$.ItemNumber', 
+                                quantity number PATH '$.Quantity',
+                                NESTED PATH '$.Part[*]'
+                                COLUMNS ( 
+                                itemdesc CLOB PATH '$.Description',
+                                upccode  number PATH '$.UPCCode',
+                                unitprice number PATH '$.UnitPrice')
                                     )
                             )
                 
-          ) jt
+          ) 
+    ) jt 
 ;
 
 --  Querying the JSON COLLECTION VIEW : PURCHASEORDER_AVG_PRC_CV
