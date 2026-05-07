@@ -71,9 +71,18 @@ Demonstrates JSON collection table compression options, including:
 * `COMPRESSION MEDIUM`
 * `COMPRESSION HIGH`
 
-### `10. json-monitoring.sql`
+### `10. json-montoring.sql`
 
 Shows how to monitor JSON queries using SQL Monitor reports and `DBMS_SQLDIAG`.
+
+### `11. iot-json-archive.sql`
+
+Demonstrates how to archive and manage IoT-style JSON data in Oracle Database, including:
+* JSON-based IoT event storage
+* Time-series style archival patterns
+* JSON querying for device telemetry
+* Archive table management techniques
+* Efficient handling of high-volume JSON payloads
 
 ### `README.md`
 
@@ -85,17 +94,18 @@ Contains the Universal Permissive License (UPL), Version 1.0.
 
 ## Main Topics Covered with links to Oracle docs
 
-* [Oracle JSON tables](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/json-in-oracle-database.html)
-* [JSON querying](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/query-json-data.html)
-* [JSON indexing](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/indexes-for-json-data.html)
-* [Relational duality views](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/json-relational-duality-views.html)
-* [JSON collection views](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/json-collection-views.html)
-* [Materialized views on JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/materialized-views-json-data.html)
-* [JSON dataguide](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/json-dataguide.html)
-* [Partitioning JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/partitioning-json-data.html)
-* [JSON compression](https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/compression-json-data.html)
-* [Query monitoring](https://docs.oracle.com/en/database/oracle/oracle-database/23/tgsql/monitoring-and-tuning-sql.html)
+* [Oracle JSON tables](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-in-oracle-database.html)
+* [JSON querying](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/query-json-data.html)
+* [JSON indexing](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/indexes-for-json-data.html)
+* [Relational duality views](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-relational-duality-views.html)
+* [JSON collection views](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-collection-views.html)
+* [Materialized views on JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/materialized-views-json-data.html)
+* [JSON dataguide](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-dataguide.html)
+* [Partitioning JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/partitioning-json-data.html)
+* [JSON compression](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/compression-json-data.html)
+* [Query monitoring](https://docs.oracle.com/en/database/oracle/oracle-database/26/tgsql/monitoring-and-tuning-sql.html)
+ 
 
 ## Summary
 
-This repository reads like a practical Oracle JSON workshop: each SQL file focuses on one feature area and builds a clear story around how JSON can be stored, queried, optimized, and monitored in Oracle Database.
+This repository reads like a practical Oracle JSON workshop: each SQL file focuses on one feature area and builds a clear story around how JSON can be stored, queried, optimized, monitored, and archived in Oracle Database, including modern IoT-style JSON workloads.
