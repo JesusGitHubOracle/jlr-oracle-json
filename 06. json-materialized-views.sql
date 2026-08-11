@@ -1,4 +1,6 @@
-
+ 
+ 
+ 
 
 
 ---------------------------------------------------------------------------------
@@ -7,6 +9,8 @@
 ---------------------------------------------------------------------------------
 
 -- Creating Materialized view with ROWID 
+-- Each LineItems element becomes a separate MV row. ROWID identifies the
+-- source collection row, allowing fast refresh and joins back to PURCHASEORDERS.
 DROP MATERIALIZED VIEW JSON_PO_MV_ROWID;
 CREATE MATERIALIZED VIEW JSON_PO_MV_ROWID
 BUILD IMMEDIATE
@@ -14,6 +18,8 @@ REFRESH FAST ON STATEMENT WITH ROWID
 AS
 SELECT po.rowid as id, po.*
 FROM PURCHASEORDERS po,
+      -- JSON_TABLE projects scalar order fields and unnests LineItems and Part.
+      -- The nested paths preserve the parent purchase-order relationship.
       JSON_TABLE (po.DATA, '$' error on error null on empty
             COLUMNS (ponumber  number         PATH '$.PONumber',
                      requestor varchar2(32)   PATH '$.Requestor',
@@ -47,6 +53,8 @@ SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
 
 
 -- Creating Materialized view with PRIMARY KEY
+-- RESID is the collection's internal document identifier. This form supports
+-- query rewrite back to the JSON collection through the collection key.
       
 DROP MATERIALIZED VIEW JSON_PO_MV_PK;          
 CREATE MATERIALIZED VIEW JSON_PO_MV_PK BUILD IMMEDIATE
@@ -121,6 +129,8 @@ select  PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
 DROP MATERIALIZED VIEW JSON_PO_MV_PK; 
 
 --create the MV for query rewrite
+-- This MV exposes the JSON paths used by the later JSON_EXISTS predicates as
+-- relational columns. Oracle can rewrite eligible JSON queries to this MV.
 DROP MATERIALIZED VIEW mv_for_query_rewrite;  
 CREATE MATERIALIZED VIEW mv_for_query_rewrite
   BUILD IMMEDIATE
@@ -140,6 +150,8 @@ CREATE MATERIALIZED VIEW mv_for_query_rewrite
                     unitprice   NUMBER         PATH '$.Part.UnitPrice'))) jt;
 
 ---- &&
+-- Disable SQL*Plus substitution so ampersands in JSON path expressions are
+-- passed to the database unchanged.
 SET DEFINE OFF
 EXPLAIN PLAN for SELECT po.data FROM purchaseorders po
       WHERE JSON_EXISTS(po.data,
@@ -214,6 +226,8 @@ If it is, then the plan refers to mv_for_query_rewrite. For example:
 */
 ---
 -- Index on a MV
+-- This composite index supports the USERID, UPC_CODE, and QUANTITY filters
+-- that are projected from the embedded LineItems objects.
 drop INDEX MV_IDx;
 CREATE INDEX mv_idx ON mv_for_query_rewrite(userid,
                                             upc_code,
@@ -260,6 +274,8 @@ Note
 
 
 -- Materialized view  aggregation                 
+-- Pre-aggregate the extended price of every line item (quantity * unit price)
+-- so purchase-order totals can be retrieved without reparsing each document.
 DROP MATERIALIZED VIEW  mv_for_aggregation;
 CREATE MATERIALIZED VIEW mv_for_aggregation
   AS SELECT jt.po_number, sum(jt.quantity * jt.unitprice) 
@@ -283,68 +299,188 @@ explain plan for select * from mv_for_aggregation;
 
 select  PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
 
--- MV example 2
--- SALES JSON collection Table
-drop table if exists COFFE_SALES;
-create JSON collection table if not exists COFFE_SALES;
+/*
+-----------------------------------------------------------------------------------------------------------------------------------    
+| Id  | Operation                       | Name               | Rows  | Bytes | Cost (%CPU)| Time     |    TQ  |IN-OUT| PQ Distrib |    
+-----------------------------------------------------------------------------------------------------------------------------------    
+|   0 | SELECT STATEMENT                |                    | 10000 | 90000 |     6   (0)| 00:00:01 |        |      |            |    
+|   1 |  PX COORDINATOR                 |                    |       |       |            |          |        |      |            |    
+|   2 |   PX SEND QC (RANDOM)           | :TQ10000           | 10000 | 90000 |     6   (0)| 00:00:01 |  Q1,00 | P->S | QC (RAND)  |    
+|   3 |    PX BLOCK ITERATOR            |                    | 10000 | 90000 |     6   (0)| 00:00:01 |  Q1,00 | PCWC |            |    
+|   4 |     MAT_VIEW ACCESS STORAGE FULL| MV_FOR_AGGREGATION | 10000 | 90000 |     6   (0)| 00:00:01 |  Q1,00 | PCWP |            |    
+-----------------------------------------------------------------------------------------------------------------------------------     
+*/
+ 
 
--- populate the JSON collection table with 2 documents:
+/*
+  Search embeddedDocument query for the PURCHASEORDERS collection.
 
-insert into COFFE_SALES values ('{ "_id" : 1, "item" : "Espresso", "price" : 5, "size": "Short", "quantity" : 22, "date" : "2025-04-15T08:00:00Z"}');
-insert into COFFE_SALES values ('{ "_id" : 2, "item" : "Finlandia", "price" : 6, "old_price" : 4, "size": "Grande","quantity" : 100, "date" : "2025-01-10T10:00:00Z",
-"CoffeeItems" : [{ "Details"     : { "Description" : "Coffee from Helsinki",
-                                "UnitPrice"   : 6,
-                                "Code"        : 35801},
-                   "Quantity" : 50.0 },
-                 { "Details"     : { "Description" : "Coffee from Tampere",
-                                "UnitPrice"   : 6,
-                                "Code"        : 35802},
-                   "Quantity" : 30.0 } ,
-                 { "Details"     : { "Description" : "Coffee from Turku",
-                                "UnitPrice"   : 6,
-                                "Code"        : 35803},
-                   "Quantity" : 20.0 }] }');
+  Every LineItems[*] object is materialized as one row. Thus predicates on
+  QUANTITY and UNIT_PRICE, and Oracle Text matching on DESCRIPTION, all apply
+  to the same embedded LineItems element.
 
-commit work;
+  Run as the owner of PURCHASEORDERS. The collection itself is not altered.
+*/
 
-drop MATERIALIZED VIEW if exists coffe_sales_mv;
+-- Drop the existing line-item search materialized view, if present...
 
-CREATE MATERIALIZED VIEW coffe_sales_mv
-  BUILD IMMEDIATE
-  REFRESH FORCE 
-   START WITH TRUNC(SYSDATE+1)+12/24
-   NEXT SYSDATE+1 
-  WITH ROWID
- AS SELECT jt.*
-    FROM sales s,
-         json_table(s.data, '$' ERROR ON ERROR NULL ON EMPTY
-              COLUMNS (
-                item_id         NUMBER         PATH '$._id',
-                item_name       VARCHAR2(16)   PATH '$.item',
-                item_price      NUMBER         PATH '$.price',
-                NESTED PATH '$.CoffeeItems[*]'
-                  COLUMNS (
-                    details_description VARCHAR2(32)  PATH '$.Details.Description',
-                    details_code        NUMBER        PATH '$.Details.Code'))) jt;
+ drop materialized view purchaseorders_lineitems_mv;   
+ 
 
-CREATE INDEX mv_det_code_idx ON coffe_sales_mv(details_code);
+--  Create or configure the Oracle Text wordlist...
+BEGIN
+  ctx_ddl.drop_preference('purchaseorders_li_wordlist');
+END;
+/
 
-select * from COFF_SALES_MV;
--- update the price
-exec DBMS_MVIEW.REFRESH('COFFE_SALES_MV');
-SELECT * FROM coffe_sales_mv s WHERE s.details_code is not null;
-explain plan for SELECT * FROM coffe_sales_mv s WHERE s.details_code is not null;
+ BEGIN
+    ctx_ddl.create_preference(
+      'purchaseorders_li_wordlist',
+      'BASIC_WORDLIST'
+    );
+
+  ctx_ddl.set_attribute(
+    'purchaseorders_li_wordlist', 'PREFIX_INDEX', 'TRUE'
+  );
+  ctx_ddl.set_attribute(
+    'purchaseorders_li_wordlist', 'PREFIX_MIN_LENGTH', '3'
+  );
+  ctx_ddl.set_attribute(
+    'purchaseorders_li_wordlist', 'PREFIX_MAX_LENGTH', '12'
+  );
+end;
+/
+
+--  Materialize one row per embedded LineItems element...
+
+create materialized view purchaseorders_lineitems_mv
+  build immediate
+  refresh complete on demand
+as
+select
+  po.rowid as source_rowid,
+  json_value(po.data, '$.PONumber' returning number
+             null on empty null on error) as po_number,
+  li.item_number,
+  li.description,
+  li.unit_price,
+  li.upc_code,
+  li.quantity
+from purchaseorders po
+cross join json_table(
+  po.data,
+  '$.LineItems[*]'
+  columns (
+    item_number number          path '$.ItemNumber',
+    description varchar2(1000)  path '$.Part.Description',
+    unit_price  number          path '$.Part.UnitPrice',
+    upc_code    number          path '$.Part.UPCCode',
+    quantity    number          path '$.Quantity'
+  )
+) li
+where li.description is not null;
+
+--  Create indexes for text and structured line-item predicates...
+
+create index purchaseorders_li_text_idx
+  on purchaseorders_lineitems_mv (description)
+  indextype is ctxsys.context
+  parameters (
+    'WORDLIST purchaseorders_li_wordlist
+     SYNC (ON COMMIT)'
+  );
+
+create index purchaseorders_li_price_qty_ix
+  on purchaseorders_lineitems_mv (unit_price, quantity);
+
+--  Example: same embedded LineItems object must satisfy every predicate...
+
+select
+  po_number,
+  item_number,
+  description,
+  unit_price,
+  quantity,
+  score(1) as relevance
+from purchaseorders_lineitems_mv
+where unit_price >= 20
+  and quantity >= 5
+  and contains(description, 'star%', 1) > 0
+order by score(1) desc, po_number, item_number;
+
+/*
+
+   PO_NUMBER    ITEM_NUMBER DESCRIPTION                                    UNIT_PRICE    QUANTITY    RELEVANCE 
+____________ ______________ ___________________________________________ _____________ ___________ ____________ 
+           2              4 Stardom                                             27.95           8            9 
+          51              4 Roughnecks: Starship Troopers Chronicles            27.95           8            9 
+         508              1 Stargate                                            27.95           8            9 
+         927              4 Stargate & Moon 44                                  32.95           6            9 
+        1047              2 Stardom                                             27.95           7            9 
+        1259              1 Stargate                                            27.95           7            9 
+        1392              3 Star Trek: First Contact                            27.95           5            9 
+        1429              4 Stargate & Moon 44                                  32.95           8            9 
+        1664              3 Stargate                                            27.95           7            9 
+        1785              3 Stargate                                            27.95           7            9 
+        1789              2 Starry Night                                        27.95           5            9 
+        1825              5 Child Star: The Shirley Temple Story                27.95           9            9 
+        1839              2 Star Trek: The Motion Picture                       32.95           7            9 
+*/
+
+explain plan for
+select
+  po_number,
+  item_number,
+  description,
+  unit_price,
+  quantity,
+  score(1) as relevance
+from purchaseorders_lineitems_mv
+where unit_price >= 20
+  and quantity >= 5
+  and contains(description, 'star%', 1) > 0
+order by score(1) desc, po_number, item_number;
 select * from dbms_xplan.display();
 
-CREATE OR REPLACE JSON COLLECTION VIEW coffe_sales_json_cv AS 
-  SELECT JSON {'_id'             : item_id,
-               'coffee_location' : details_description,
-               'code'            : details_code}
-  FROM coffe_sales_mv
-  WHERE details_code is not NULL;
-  
-select * from coffe_SALES_JSON_CV;
+
+
+/*
+-----------------------------------------------------------------------------------------------------------------------------------------------------------    
+| Id  | Operation                                   | Name                           | Rows  | Bytes | Cost (%CPU)| Time     |    TQ  |IN-OUT| PQ Distrib |    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------    
+|   0 | SELECT STATEMENT                            |                                |    60 |  2880 |   142   (2)| 00:00:01 |        |      |            |    
+|   1 |  PX COORDINATOR                             |                                |       |       |            |          |        |      |            |    
+|   2 |   PX SEND QC (ORDER)                        | :TQ10002                       |    60 |  2880 |   142   (2)| 00:00:01 |  Q1,02 | P->S | QC (ORDER) |    
+|   3 |    SORT ORDER BY                            |                                |    60 |  2880 |   142   (2)| 00:00:01 |  Q1,02 | PCWP |            |    
+|   4 |     PX RECEIVE                              |                                |    60 |  2880 |   141   (1)| 00:00:01 |  Q1,02 | PCWP |            |    
+|   5 |      PX SEND RANGE                          | :TQ10001                       |    60 |  2880 |   141   (1)| 00:00:01 |  Q1,01 | P->P | RANGE      |    
+|   6 |       MAT_VIEW ACCESS BY INDEX ROWID BATCHED| PURCHASEORDERS_LINEITEMS_MV    |    60 |  2880 |   141   (1)| 00:00:01 |  Q1,01 | PCWP |            |    
+|   7 |        BUFFER SORT                          |                                |       |       |            |          |  Q1,01 | PCWC |            |    
+|   8 |         PX RECEIVE                          |                                |       |       |            |          |  Q1,01 | PCWP |            |    
+|   9 |          PX SEND HASH (BLOCK ADDRESS)       | :TQ10000                       |       |       |            |          |        | S->P | HASH (BLOCK|    
+|  10 |           BITMAP CONVERSION TO ROWIDS       |                                |       |       |            |          |        |      |            |    
+|  11 |            BITMAP AND                       |                                |       |       |            |          |        |      |            |    
+|  12 |             BITMAP CONVERSION FROM ROWIDS   |                                |       |       |            |          |        |      |            |    
+|  13 |              SORT ORDER BY                  |                                |       |       |            |          |        |      |            |    
+|* 14 |               INDEX RANGE SCAN              | PURCHASEORDERS_LI_PRICE_QTY_IX |       |       |    22   (0)| 00:00:01 |        |      |            |    
+|  15 |             BITMAP CONVERSION FROM ROWIDS   |                                |       |       |            |          |        |      |            |    
+|  16 |              SORT ORDER BY                  |                                |       |       |            |          |        |      |            |    
+|* 17 |               DOMAIN INDEX                  | PURCHASEORDERS_LI_TEXT_IDX     |       |       |   106   (0)| 00:00:01 |        |      |            |    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------    
+                                                                                                                                                               
+Predicate Information (identified by operation id):                                                                                                            
+---------------------------------------------------                                                                                                            
+                                                                                                                                                               
+  14 - access("UNIT_PRICE">=20 AND "QUANTITY">=5)                                                                                                              
+       filter("QUANTITY">=5 AND "UNIT_PRICE">=20)                                                                                                              
+  17 - access("CTXSYS"."CONTAINS"("DESCRIPTION",'star%',1)>0)                                                                                                  
+                                                                                                                                                               
+Note                                                                                                                                                           
+-----                                                                                                                                                          
 
 
 
-
+*/
+prompt Refresh after loading or changing purchase orders:
+prompt begin dbms_mview.refresh('PURCHASEORDERS_LINEITEMS_MV', 'C'); end;
+prompt /

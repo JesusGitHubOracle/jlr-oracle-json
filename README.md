@@ -49,9 +49,17 @@ Shows how to build relational views over JSON tables and how to work with JSON c
 
 Covers performance patterns with materialized views over JSON data, including:
 
-* Materialized view usage
-* Automatic query rewrite
-* Aggregation support
+* Expanding `PURCHASEORDERS` JSON documents and their `LineItems` arrays with `JSON_TABLE`
+* Fast-refresh materialized views that use either source `ROWID` or the collection document identifier (`RESID`)
+* Explain-plan examples that show materialized-view access
+* Automatic query rewrite for `JSON_EXISTS` predicates on purchase-order and line-item fields
+* A composite index on projected `USERID`, `UPC_CODE`, and `QUANTITY` columns
+* An aggregation materialized view that precomputes purchase-order line-item totals
+* An embedded-document search pattern that materializes each `LineItems[*]` object as a row, combining an Oracle Text index on `DESCRIPTION` with structured price and quantity filters
+
+The query-rewrite examples show how Oracle can first filter the relationalized materialized view, then retrieve only the matching source JSON document. Confirm rewrite by inspecting the execution plan for `MV_FOR_QUERY_REWRITE`.
+
+The line-item search example keeps its text and structured predicates on the same materialized line-item row, avoiding cross-element matches in the source JSON array.
 
 ### `07. json-dataguide.sql`
 
