@@ -1,4 +1,4 @@
-# Oracle JSON Workshop
+# Oracle JSON: From relational to document store
 
 Practical SQL examples for working with JSON in Oracle Database and Autonomous AI JSON Database. The examples use a `PURCHASEORDERS` JSON collection table and progress from loading documents through querying, indexing, relational duality views, materialized views, partitioning, compression, monitoring, and IoT archival.
 
