@@ -7,6 +7,7 @@
 
  
 CREATE or REPLACE  JSON RELATIONAL DUALITY VIEW SALES_HISTORY_DUALITY_VIEW
+
  AS SELECT JSON {
         'quantitySold' : s.QUANTITY_SOLD,
         'amountSold' : s.AMOUNT_SOLD,
@@ -37,6 +38,7 @@ CREATE or REPLACE  JSON RELATIONAL DUALITY VIEW SALES_HISTORY_DUALITY_VIEW
 ;
 
 SELECT  dv.DATA.customers.custId CUST_ID,
+
         dv.DATA.amountSold AMOUNT_SOLD,
         dv.DATA.customers.custEmail CUST_EMAIL,
         dv.DATA.products.prodId PROD_ID,

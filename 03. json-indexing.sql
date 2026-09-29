@@ -1,107 +1,188 @@
 
 --------------------------------------------------------------------------------------------------------------
--- JSON INDEXING
+-- ORacle JSON INDEXING: 
 -- Unique Index
--- Composite Index : Dot Notation and JSON_VALUE
--- Search Index
--- Multivalue Index
+-- Composite Index  
+-- Multivalue Index 
 -- Partial Index
--- Explain Plans for Queries using Indexes 
+-- JSON Search Index
 ------------------------------------------ INDEXING --------------------------------------------------------------
--- Unique  index
-DROP INDEX po_num_idx;
-CREATE UNIQUE INDEX po_num_idx ON PURCHASEORDERS po
+
+
+
+-----------------------------------------------------------------------------------------------------------
+-- Unique index :Extracts the PONumber JSON property as a number and creates a unique index.
+-----------------------------------------------------------------------------------------------------------
+
+DROP INDEX IF EXISTS po_num_idx;
+
+CREATE UNIQUE INDEX po_num_idx
+ON PURCHASEORDERS po
   (po.data.PONumber.number());
 
--- Composite index, dot notation
-DROP INDEX user_cost_ctr_idx;
-CREATE INDEX user_cost_ctr_idx ON
-  PURCHASEORDERS po (po.data."User".string(), po.data.CostCenter.string()); 
+EXPLAIN PLAN FOR 
+  SELECT DATA FROM PURCHASEORDERS p
+  WHERE p.data.PONumber.number() = 10000;
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())
+/* 
+----------------------------------------------------------------------------------------------    
+| Id  | Operation                   | Name           | Rows  | Bytes | Cost (%CPU)| Time     |    
+----------------------------------------------------------------------------------------------    
+|   0 | SELECT STATEMENT            |                |     1 |   871 |     2   (0)| 00:00:01 |    
+|   1 |  TABLE ACCESS BY INDEX ROWID| PURCHASEORDERS |     1 |   871 |     2   (0)| 00:00:01 |    
+|*  2 |   INDEX UNIQUE SCAN         | PO_NUM_IDX     |     1 |       |     1   (0)| 00:00:01 |    
+----------------------------------------------------------------------------------------------    
+                                                                                                  
+Predicate Information (identified by operation id):                                               
+---------------------------------------------------                                               
+                                                                                                  
+   2 - access(JSON_VALUE("DATA" /*+ LOB_BY_VALUE */ -- FORMAT OSON ,                                
+  --            '$.PONumber.number()' RETURNING NUMBER NULL ON ERROR TYPE(LAX) )=10000)
 
--- Composite Index usig JSON_VALUE
-DROP INDEX user_cost_ctr_idx;
+*/            
+
+-----------------------------------------------------------------------------------------------------------------------------
+-- Composite index:  Extracts User and CostCenter JSON properties as Strings and stores them together in one composite index.
+-- It is non-unique, so many purchase orders can share the same user and cost center
+-- po.data."User".string() and po.data."User".string() have a default SQL return type of VARCHAR2(4000)—up to 4,000 bytes.
+------------------------------------------------------------------------------------------------------------------------------
+
+DROP INDEX IF EXISTS user_cost_ctr_idx;
+
+CREATE INDEX user_cost_ctr_idx
+ON PURCHASEORDERS po (
+  po.data."User".string(),
+  po.data.CostCenter.string()
+);
+
+
+EXPLAIN PLAN FOR
+SELECT data
+FROM PURCHASEORDERS p
+WHERE p.data."User".string() = 'ABULL'
+  AND p.data.CostCenter.string() = 'A50';
+
+SELECT PLAN_TABLE_OUTPUT
+FROM TABLE(DBMS_XPLAN.DISPLAY());
+
+/*
+----------------------------------------------------------------------------------------------------------------------------------------        
+| Id  | Operation                             | Name              | Rows  | Bytes | Cost (%CPU)| Time     |    TQ  |IN-OUT| PQ Distrib |        
+----------------------------------------------------------------------------------------------------------------------------------------        
+|   0 | SELECT STATEMENT                      |                   |    72 | 67464 |    61   (0)| 00:00:01 |        |      |            |        
+|   1 |  PX COORDINATOR                       |                   |       |       |            |          |        |      |            |        
+|   2 |   PX SEND QC (RANDOM)                 | :TQ10001          |    72 | 67464 |    61   (0)| 00:00:01 |  Q1,01 | P->S | QC (RAND)  |        
+|   3 |    TABLE ACCESS BY INDEX ROWID BATCHED| PURCHASEORDERS    |    72 | 67464 |    61   (0)| 00:00:01 |  Q1,01 | PCWP |            |        
+|   4 |     BUFFER SORT                       |                   |       |       |            |          |  Q1,01 | PCWC |            |        
+|   5 |      PX RECEIVE                       |                   |    85 |       |     1   (0)| 00:00:01 |  Q1,01 | PCWP |            |        
+|   6 |       PX SEND HASH (BLOCK ADDRESS)    | :TQ10000          |    85 |       |     1   (0)| 00:00:01 |  Q1,00 | S->P | HASH (BLOCK|        
+|   7 |        PX SELECTOR                    |                   |       |       |            |          |  Q1,00 | SCWC |            |        
+|*  8 |         INDEX RANGE SCAN              | USER_COST_CTR_IDX |    85 |       |     1   (0)| 00:00:01 |  Q1,00 | SCWP |            |        
+----------------------------------------------------------------------------------------------------------------------------------------        
+                                                                                                                                                
+Predicate Information (identified by operation id):                                                                                             
+---------------------------------------------------                                                                                             
+                                                                                                                                                
+   8 - access(JSON_VALUE("DATA" /*+ LOB_BY_VALUE */ -- FORMAT OSON , '$."User".string()' RETURNING VARCHAR2(4000) NULL ON ERROR                   
+    --          TYPE(LAX) )='ABULL' AND JSON_VALUE("DATA" /*+ LOB_BY_VALUE */  FORMAT OSON , '$.CostCenter.string()' RETURNING VARCHAR2(4000)     
+    --          NULL ON ERROR TYPE(LAX) )='A50')   
+
+*/
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------
+-- Same as above, Composite Index creation using JSON_VALUE
+-- It indexes:  The JSON User value as text up to 20 characters AND The JSON CostCenter value as text up to 6 characters.
+----------------------------------------------------------------------------------------------------------------------------
+
+DROP INDEX IF EXISTS user_cost_ctr_idx;
 CREATE INDEX user_cost_ctr_idx ON
   PURCHASEORDERS (json_value(data, '$.User' RETURNING VARCHAR2(20)),
                   json_value(data, '$.CostCenter' RETURNING VARCHAR2(6)));
 
 
- -- Composite index on  "_id" and "Reference"
-/*
-Strict and Lax syntax https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/sql-json-conditions-is-json-and-is-not-json.html#GUID-1B6CFFBE-85FE-41DD-BA14-DD1DE73EAB20
-Oracle recommends using LAX mode unless you specifically need the error handling behavior of STRICT mode. 
-EORR ON ERROR and NULL on EMPTY https://docs.oracle.com/en/database/oracle/oracle-database/23/adjsn/empty-field-clause-sql-json-query-functions.html 
-*/
-     
-
-CREATE UNIQUE INDEX   "po_reference_idx" ON " PURCHASEORDERS"
- (JSON_VALUE("DATA" FORMAT OSON , '$._id' RETURNING VARCHAR2(2000) ERROR ON ERROR NULL ON EMPTY TYPE(LAX) )
- ,JSON_VALUE("DATA" FORMAT OSON , '$.Reference' RETURNING VARCHAR2(2000) ERROR ON ERROR NULL ON EMPTY TYPE(LAX) ), 1) 
-  ;
-     
-
--- search index
-DROP INDEX po_search_idx;
-CREATE SEARCH INDEX po_search_idx ON PURCHASEORDERS (DATA)
-  FOR JSON PARAMETERS ('MAINTENANCE AUTO');
 
 
--- Multivalue index on UPCCode
--- extracting UPCCodes from nested array  
-SELECT po.data.PONumber, po.data.Requestor, po.data.LineItems.Part.UPCCode  FROM PURCHASEORDERS po
-WHERE po.data.PONumber.number() = 4606;
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- Multivalue index is specifically intended for JSON scalars that can occur multiple times in an array.
+-- Create a multivalue index for every LineItems[*].Part.UPCCode value.
+-- The multivalue index can speed this up by indexing each line item’s UPC code separately.
+--------------------------------------------------------------------------------------------------------------------------------------------
 
-/*
-PONUMBER    REQUESTOR           LINEITEMS                                
-___________ ___________________ ________________________________________ 
-4606        "Stephen Stiles"    [27616857712,18713811967,43396032279]    
-*/
+DROP INDEX IF EXISTS mviuppcode;
 
---   Creating Multivalue index on nested array  
-DROP INDEX mvi_UPCCode;
-CREATE MULTIVALUE INDEX mvi_UPCCode ON PURCHASEORDERS po
-      (po.data.LineItems.Part.UPCCode.numberOnly());
+CREATE MULTIVALUE INDEX mviuppcode
+ON purchaseorders (
+  JSON_TABLE(
+    data,
+    '$'
+    ERROR ON ERROR
+    NULL ON EMPTY
+    NULL ON MISMATCH
+    COLUMNS (
+      NESTED PATH '$.LineItems[*]'
+      COLUMNS (
+        upccode NUMBER PATH '$.Part.UPCCode'
+      )
+    )
+  )
+);
 
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- querying the multivalue index:  Extracts the all json data for a specific UPC code inside the array
+--------------------------------------------------------------------------------------------------------------------------------------------
  
- -- extracting UPPCCode from nested array using JSON_TABLE, 
- -- limiting the query to ponumber = 4606 for shorter output
+EXPLAIN PLAN FOR 
+SELECT data
+FROM PURCHASEORDERS
+WHERE JSON_EXISTS(
+  data,
+  '$.LineItems.Part?(@.UPCCode.number() == $V1)'
+  PASSING 85391264828 AS "V1"
+);
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
+ 
 
- SELECT upccode
-       , ponumber
-       , requestor
-       FROM PURCHASEORDERS,
-       JSON_TABLE(DATA, '$' error on error null on empty
-       COLUMNS (ponumber  number         PATH '$.PONumber',
-              requestor varchar2(32)   PATH '$.Requestor',
-              special   varchar2(30)   PATH '$."Special Instructions"',
-              NESTED PATH '$.LineItems[*]'
-                     COLUMNS
-                     ( itemnumber number PATH '$.ItemNumber',
-                        quantity number PATH '$.Quantity',
-                        NESTED PATH '$.Part[*]'
-                        COLUMNS (
-                        itemdesc CLOB PATH '$.Description',
-                        upccode  number PATH '$.UPCCode',
-                        unitprice number PATH '$.UnitPrice')
-                      )
-                ))
-                WHERE ponumber = 4606;
-        
+ /*
+ -------------------------------------------------------------------------------------------------------------------------------------    
+| Id  | Operation                             | Name           | Rows  | Bytes | Cost (%CPU)| Time     |    TQ  |IN-OUT| PQ Distrib |    
+-------------------------------------------------------------------------------------------------------------------------------------    
+|   0 | SELECT STATEMENT                      |                |     2 |  1742 |     6   (0)| 00:00:01 |        |      |            |    
+|   1 |  PX COORDINATOR                       |                |       |       |            |          |        |      |            |    
+|   2 |   PX SEND QC (RANDOM)                 | :TQ10001       |     2 |  1742 |     6   (0)| 00:00:01 |  Q1,01 | P->S | QC (RAND)  |    
+|   3 |    TABLE ACCESS BY INDEX ROWID BATCHED| PURCHASEORDERS |     2 |  1742 |     6   (0)| 00:00:01 |  Q1,01 | PCWP |            |    
+|   4 |     BUFFER SORT                       |                |       |       |            |          |  Q1,01 | PCWC |            |    
+|   5 |      PX RECEIVE                       |                |     5 |       |     1   (0)| 00:00:01 |  Q1,01 | PCWP |            |    
+|   6 |       PX SEND HASH (BLOCK ADDRESS)    | :TQ10000       |     5 |       |     1   (0)| 00:00:01 |  Q1,00 | S->P | HASH (BLOCK|    
+|   7 |        PX SELECTOR                    |                |       |       |            |          |  Q1,00 | SCWC |            |    
+|*  8 |         INDEX RANGE SCAN (MULTI VALUE)| MVIUPPCODE     |     5 |       |     1   (0)| 00:00:01 |  Q1,00 | SCWP |            |    
+-------------------------------------------------------------------------------------------------------------------------------------    
+                                                                                                                                         
+Predicate Information (identified by operation id):                                                                                      
+---------------------------------------------------                                                                                      
+                                                                                                                                         
+   8 - access(JSON_QUERY("DATA" /*+ LOB_BY_VALUE */ -- FORMAT OSON , '$.LineItems[*].Part.UPCCode' RETURNING NUMBER ASIS                   
+            --  WITHOUT ARRAY WRAPPER ERROR ON ERROR NULL ON EMPTY NULL ON MISMATCH TYPE(LAX)  MULTIVALUE)=85391264828)  
  
-/*
-       UPCCODE    PONUMBER REQUESTOR         
-______________ ___________ _________________ 
-   27616857712        4606 Stephen Stiles    
-   18713811967        4606 Stephen Stiles    
-   43396032279        4606 Stephen Stiles    
-*/
  
--- Creating Multivalue index on nested array using JSON_TABLE
+ */
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+-- Alternative sytanx: Creating Multivalue index on nested array using JSON_TABLE
+--------------------------------------------------------------------------------------------------------------------------------------------
+
 DROP INDEX mvi_uppcode_JT;
 CREATE MULTIVALUE INDEX mviuppcode ON PURCHASEORDERS
   (JSON_TABLE(
     DATA,  '$' error on error null on empty NULL ON MISMATCH
     COLUMNS (NESTED PATH '$.LineItems[*]'
-            COLUMNS (NESTED PATH '$.Part[*]'
+            COLUMNS (NESTED PATH '$.Part'
                     COLUMNS (upccode NUMBER PATH '$.UPCCode'
                     )
             )
@@ -109,154 +190,65 @@ CREATE MULTIVALUE INDEX mviuppcode ON PURCHASEORDERS
 ));
 
 
--- Explain Plans for Queries using Indexes
 
-EXPLAIN PLAN FOR SELECT DATA FROM PURCHASEORDERS p
-  WHERE p.data.PONumber.number() = 10000;
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- Partial Index: It creates a partial function-based index containing only purchase orders whose ZIP code is 99236.
+--------------------------------------------------------------------------------------------------------------------------------------------
+DROP INDEX IF EXISTS par_postcode_idx;
+
+CREATE INDEX par_postcode_idx ON purchaseorders (
+  CASE
+    WHEN JSON_VALUE(
+           data,
+           '$.ShippingInstructions.Address.postcode'
+           RETURNING VARCHAR2(20)
+           ERROR ON ERROR
+           NULL ON EMPTY
+         ) = 'OX9 9ZB'
+    THEN 'OX9 9ZB'
+  END
+);
+
+--
+EXPLAIN PLAN FOR  
+SELECT data
+FROM purchaseorders
+WHERE CASE
+        WHEN JSON_VALUE(
+               data,
+               '$.ShippingInstructions.Address.postcode'
+               RETURNING VARCHAR2(20)
+               ERROR ON ERROR
+               NULL ON EMPTY
+             ) = 'OX9 9ZB'
+        THEN 'OX9 9ZB'
+      END = 'OX9 9ZB';
 SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
-/* 
------------------------------------------------------------------------------------------------------------------    
-| Id  | Operation                          | Name       | Rows  | Bytes | Cost (%CPU)| Time     | Pstart| Pstop |    
------------------------------------------------------------------------------------------------------------------    
-|   0 | SELECT STATEMENT                   |            |     1 |   893 |     2   (0)| 00:00:01 |       |       |    
-|   1 |  TABLE ACCESS BY GLOBAL INDEX ROWID| ORDERS     |     1 |   893 |     2   (0)| 00:00:01 | ROWID | ROWID |    
-|*  2 |   INDEX UNIQUE SCAN                | PO_NUM_IDX |     1 |       |     1   (0)| 00:00:01 |       |       |    
------------------------------------------------------------------------------------------------------------------    
-                                                                                                                     
-Predicate Information (identified by operation id):                                                                  
----------------------------------------------------                                                                  
-                                                                                                                     
-   2 - access(JSON_VALUE("DATA" /*+ LOB_BY_VALUE */ 
-            -- FORMAT OSON , '$.PONumber.number()' RETURNING                   
-            --  NUMBER NULL ON ERROR TYPE(LAX) )=10000)                                                                
---Note                                                                                                                 
-   -- dynamic statistics used: dynamic sampling (level=AUTO (SYSTEM))                                                 
---19 rows selected. 
-
--- JSON_EXISTS in Where Clause.  PO_SEARCH_IDX chosen  
-EXPLAIN PLAN FOR SELECT DATA FROM PURCHASEORDERS
-  WHERE JSON_EXISTS(DATA, '$?(@.PONumber == $V1)'
-       PASSING 10000 AS "V1" ); 
-
-SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
  
 
-/*
---------------------------------------------------------------------------------------------------------------------     
-| Id  | Operation                          | Name          | Rows  | Bytes | Cost (%CPU)| Time     | Pstart| Pstop |     
---------------------------------------------------------------------------------------------------------------------     
-|   0 | SELECT STATEMENT                   |               |     1 |   892 |     6   (0)| 00:00:01 |       |       |     
-|*  1 |  TABLE ACCESS BY GLOBAL INDEX ROWID| ORDERS        |     1 |   892 |     6   (0)| 00:00:01 | ROWID | ROWID |     
-|*  2 |   DOMAIN INDEX                     | PO_SEARCH_IDX |       |       |     4   (0)| 00:00:01 |       |       |     
---------------------------------------------------------------------------------------------------------------------     
-                                                                                                                         
-Predicate Information (identified by operation id):                                                                      
----------------------------------------------------                                                                      
-   1 - filter(JSON_EXISTS2("DATA" /*+ LOB_BY_VALUE */ 
-             -- FORMAT OSON , '$?(@.PONumber == $V1)' PASSING 10000               
-             -- AS "V1" FALSE ON ERROR TYPE(LAX) )=1 AND JSON_VALUE("ORDERS"."DATA" /*+ LOB_BY_VALUE */  FORMAT OSON ,     
-            --  '$.PONumber.number()' RETURNING NUMBER ERROR ON ERROR TYPE(LAX) )=10000)                                   
-  -- 2 - access("CTXSYS"."CONTAINS"("ORDERS"."DATA" /*+ LOB_BY_VALUE */                                                    
-   --           ,'(sdata(FNUM_F9A83D1D49108EE786CEBB9017653F0E_PONumber  = 10000 ))')>0)                                   
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- JSON search index. It is designed for Full Text Search.
+-- MAINTENANCE AUTO means Oracle updates the index asynchronously in the background as documents change; you do not manually synchronize it.
+-- GIT repo : 
+-- oracle blog: https://blogs.oracle.com/coretec/json-full-text-search-with-oracle-ai-database-26ai
+--------------------------------------------------------------------------------------------------------------------------------------------
 
---18 rows selected. 
-
-EXPLAIN PLAN FOR 
-SELECT data FROM PURCHASEORDERS
-  WHERE json_value(data, '$.User') = 'ABULL'
-    AND json_value(data, '$.CostCenter') = 'A50';
-SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
-
-/* 
---------------------------------------------------------------------------------------------------------------------------------
-| Id  | Operation                                  | Name              | Rows  | Bytes | Cost (%CPU)| Time     | Pstart| Pstop |
---------------------------------------------------------------------------------------------------------------------------------
-|   0 | SELECT STATEMENT                           |                   |    80 | 74640 |    68   (0)| 00:00:01 |       |       |
-|   1 |  TABLE ACCESS BY GLOBAL INDEX ROWID BATCHED| ORDERS            |    80 | 74640 |    68   (0)| 00:00:01 | ROWID | ROWID |
-|*  2 |   INDEX RANGE SCAN                         | USER_COST_CTR_IDX |    85 |       |     1   (0)| 00:00:01 |       |       |
---------------------------------------------------------------------------------------------------------------------------------
- 
-Predicate Information (identified by operation id):
-
-PLAN_TABLE_OUTPUT
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- 
-   2 - access(JSON_VALUE("DATA" /*+ LOB_BY_VALUE */ 
-             -- FORMAT OSON , '$."User".string()' RETURNING VARCHAR2(4000) NULL ON 
-             -- ERROR TYPE(LAX) )='ABULL' AND JSON_VALUE("DATA" /*+ LOB_BY_VALUE */  FORMAT OSON , '$.CostCenter.string()' RETURNING 
-             -- VARCHAR2(4000) NULL ON ERROR TYPE(LAX) )='A50')
- 
- 
+DROP INDEX IF EXISTS po_search_idx;
+CREATE SEARCH INDEX po_search_idx ON PURCHASEORDERS (DATA)
+  FOR JSON PARAMETERS ('MAINTENANCE AUTO');
 
 
-EXPLAIN PLAN FOR 
-SELECT data FROM PURCHASEORDERS p
-  WHERE p.data."User" = 'ABULL' AND p.data.CostCenter = 'A50';
-SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());
-
-/* 
---------------------------------------------------------------------------------------------------------------------------------
-| Id  | Operation                                  | Name              | Rows  | Bytes | Cost (%CPU)| Time     | Pstart| Pstop |
---------------------------------------------------------------------------------------------------------------------------------
-|   0 | SELECT STATEMENT                           |                   |    80 | 74640 |    71   (0)| 00:00:01 |       |       |
-|*  1 |  TABLE ACCESS BY GLOBAL INDEX ROWID BATCHED| ORDERS            |    80 | 74640 |    71   (0)| 00:00:01 | ROWID | ROWID |
-|*  2 |   INDEX RANGE SCAN                         | USER_COST_CTR_IDX |    85 |       |     1   (0)| 00:00:01 |       |       |
---------------------------------------------------------------------------------------------------------------------------------
- 
-Predicate Information (identified by operation id):
-
-PLAN_TABLE_OUTPUT
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- 
-   1 - filter(JSON_VALUE("P"."DATA" /*+ LOB_BY_VALUE */
-              --  FORMAT OSON , '$."User"' RETURNING VARCHAR2(4000) NULL ON 
---              ERROR TYPE(STRICT) )='ABULL' AND JSON_VALUE("P"."DATA" /*+ LOB_BY_VALUE */  FORMAT OSON , '$.CostCenter' RETURNING 
---              VARCHAR2(4000) NULL ON ERROR TYPE(STRICT) )='A50')
---   2 - access(JSON_VALUE("DATA" /*+ LOB_BY_VALUE */  FORMAT OSON , '$."User".string()' RETURNING VARCHAR2(4000) NULL ON 
---              ERROR TYPE(LAX) )='ABULL' AND JSON_VALUE("DATA" /*+ LOB_BY_VALUE */  FORMAT OSON , '$.CostCenter.string()' RETURNING 
---              VARCHAR2(4000) NULL ON ERROR TYPE(LAX) )='A50')
- 
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- dynamic statistics used: dynamic sampling (level=AUTO (SYSTEM))
-
--- 23 rows selected. 
 
 
--- Partial index for JSON: Only index documents with zipcode = 99236! 
-DROP INDEX par_zipcode_idx;
-CREATE INDEX par_zipcode_idx on PURCHASEORDERS
-   (CASE WHEN JSON_VALUE(data, '$.ShippingInstructions.Address.zipCode') = 99236 THEN 
-              JSON_VALUE(data, '$.ShippingInstructions.Address.zipCode' RETURNING NUMBER ERROR ON ERROR) 
-              ELSE NULL END);
+
+
+
+
+
  
 
  
-explain plan for SELECT /*+INDEX(PURCHASEORDERS par_zipcode_idx) */ DATA FROM PURCHASEORDERS po WHERE po.data.ShippingInstructions.Address.zipCode.number() = 99236;
-select * from dbms_xplan.display();
 
 
-/* 
- PLAN_TABLE_OUTPUT                                                                                                               
-_______________________________________________________________________________________________________________________________ 
-Plan hash value: 1261428804                                                                                                                                                                                                                                     
-----------------------------------------------------------------------------------------------------------------------------    
-| Id  | Operation                    | Name           | Rows  | Bytes | Cost (%CPU)| Time     |    TQ  |IN-OUT| PQ Distrib |    
-----------------------------------------------------------------------------------------------------------------------------    
-|   0 | SELECT STATEMENT             |                |   100 | 85800 |   113   (0)| 00:00:01 |        |      |            |    
-|   1 |  PX COORDINATOR              |                |       |       |            |          |        |      |            |    
-|   2 |   PX SEND QC (RANDOM)        | :TQ10000       |   100 | 85800 |   113   (0)| 00:00:01 |  Q1,00 | P->S | QC (RAND)  |    
-|   3 |    PX BLOCK ITERATOR         |                |   100 | 85800 |   113   (0)| 00:00:01 |  Q1,00 | PCWC |            |    
-|*  4 |     TABLE ACCESS STORAGE FULL| PURCHASEORDERS |   100 | 85800 |   113   (0)| 00:00:01 |  Q1,00 | PCWP |            |    
-----------------------------------------------------------------------------------------------------------------------------    
-                                                                                                                                
-Predicate Information (identified by operation id):        */                                                                     
----------------------------------------------------                                                                             
-                                                                                                                                
---   4 - storage(JSON_VALUE("PO"."DATA" /*+ LOB_BY_VALUE */  FORMAT OSON ,                                                        
---              '$.ShippingInstructions.Address.zipCode.number()' RETURNING NUMBER NULL ON ERROR TYPE(LAX) )=99236)               
---       filter(JSON_VALUE("PO"."DATA" /*+ LOB_BY_VALUE */  FORMAT OSON ,                                                         
---              '$.ShippingInstructions.Address.zipCode.number()' RETURNING NUMBER NULL ON ERROR TYPE(LAX) )=99236)                                                                                                                                               
--- Note                                                                                                                         
--------                                                                                                                           
-   -- automatic DOP: Computed Degree of Parallelism is 8 because of degree limit                                                 
--- 23 rows selected. 
+
+ 
