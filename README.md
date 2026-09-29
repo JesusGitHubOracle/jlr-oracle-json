@@ -1,119 +1,54 @@
-# Oracle JSON:  From relational to document store 
+# Oracle JSON Workshop
 
+Practical SQL examples for working with JSON in Oracle Database and Autonomous AI JSON Database. The examples use a `PURCHASEORDERS` JSON collection table and progress from loading documents through querying, indexing, relational duality views, materialized views, partitioning, compression, monitoring, and IoT archival.
 
-## Overview
+## Prerequisites
 
-This repository is a PL/SQL-focused Oracle JSON reference project. It walks through a progression of JSON features in Oracle Database, from basic JSON table design and querying to indexing, duality views, materialized views, partitioning, compression, and monitoring.
+- Oracle Database release that supports the `JSON` data type and JSON collection tables. Several examples use current Oracle AI Database JSON features.
+- A schema with the required privileges. Use one—and only one—of the setup scripts below.
+- The `PurchaseOrders.dmp` source document file for self-managed database loading, or access to the PAR URL used by the Autonomous setup script.
 
-## This repository contains the following files
- 
+## Getting started
 
-### `01. json-tables.sql`
+1. Choose the setup script for your environment:
+   - Autonomous AI JSON Database: [`01.json-ADB-user.sql`](01.json-ADB-user.sql)
+   - Self-managed Oracle Database/PDB: [`01.json-DB-user.sql`](01.json-DB-user.sql)
+2. Run the chosen script as its documented administrative user, then run its loading section as `JSON_ORDERS`. It creates and loads the `PURCHASEORDERS` JSON collection table.
+3. Run the workshop scripts in numeric order as `JSON_ORDERS`, selecting only the features supported and licensed in your database environment.
 
-Examples for creating JSON tables, including:
+## Files
 
-* JSON collection tables
-* Tables with a JSON data type
-* Autonomous AI JSON and Oracle Database 26ai examples
+| File | Description |
+| --- | --- |
+| [`01.json-ADB-user.sql`](01.json-ADB-user.sql) | Creates the `JSON_ORDERS` user on Autonomous AI JSON Database, grants JSON-related privileges, optionally enables ORDS, and loads `PURCHASEORDERS` from Oracle Cloud Object Storage. |
+| [`01.json-DB-user.sql`](01.json-DB-user.sql) | Creates `JSON_ORDERS` for a self-managed Oracle Database PDB, configures a database directory, and loads `PURCHASEORDERS` from a local external JSON document file. |
+| [`02. json-queries.sql`](02.%20json-queries.sql) | Introduces SQL/JSON query functions and conditions: `JSON_VALUE`, `JSON_EXISTS`, `JSON_QUERY`, and `JSON_TABLE`. |
+| [`03. json-indexing.sql`](03.%20json-indexing.sql) | Creates and tests function-based, composite, JSON search, multivalue, and partial indexes; includes explain-plan examples. |
+| [`04. json-duality-views.sql`](04.%20json-duality-views.sql) | Creates a JSON-relational duality view over the Sales History sample schema. |
+| [`05. json-collection-views.sql`](05.%20json-collection-views.sql) | Builds relational and JSON collection views over purchase-order data, including aggregate and analytic examples. |
+| [`06. json-materialized-views.sql`](06.%20json-materialized-views.sql) | Demonstrates JSON projections into materialized views, fast refresh, query rewrite, indexes, and line-item search patterns. |
+| [`07. json-dataguide.sql`](07.%20json-dataguide.sql) | Generates and uses JSON data guides to derive relational views. |
+| [`08. json-partitioning.sql`](08.%20json-partitioning.sql) | Partitions a JSON collection table by a generated purchase-order-number column and demonstrates partition pruning. |
+| [`09. json-compression.sql`](09.%20json-compression.sql) | Compares `COMPRESS MEDIUM` and `COMPRESS HIGH` collection-table storage. |
+| [`10. json-montoring.sql`](10.%20json-montoring.sql) | Shows SQL monitoring and `DBMS_SQLDIAG` examples, including monitoring SQL issued through the Oracle Database API for MongoDB. |
+| [`11. iot-json-archiving.sql`](11.%20iot-json-archiving.sql) | Loads IoT JSON events and demonstrates hot/archive table patterns and time-based JSON processing. |
+| [`11. sample_iot_events.json`](11.%20sample_iot_events.json) | Sample IoT event documents used by the archiving example. |
+| [`json_orders.purchaseorders.json`](json_orders.purchaseorders.json) | Sample purchase-order JSON document data. |
+| [`LICENSE.txt`](LICENSE.txt) | Universal Permissive License (UPL), Version 1.0. |
 
-### `02. json-queries.sql`
+## Key concepts
 
-SQL examples for querying JSON data, including:
+- Native JSON storage with `JSON` columns and JSON collection tables
+- SQL/JSON projection, filtering, and array expansion
+- JSON function-based, search, multivalue, and partial indexes
+- JSON-relational duality views and JSON collection views
+- Materialized views and query rewrite over JSON data
+- Data guides, partitioning, compression, SQL monitoring, and archival workflows
 
-* `JSON_VALUE`
-* `JSON_EXISTS`
-* `JSON_QUERY`
-* `JSON_TABLE`
-* Common table expression patterns for JSON queries
+## Documentation
 
-### `03. json-indexing.sql`
-
-Examples showing how to improve JSON query performance with indexes, including:
-
-* Unique indexes
-* Composite indexes
-* Search indexes
-* Multivalue indexes
-* Partial indexes
-* Explain plans for indexed JSON queries
-
-### `04. json-duality-views.sql`
-
-Demonstrates Oracle JSON relational duality views with a customer / products / sales relational data model.
-
-### `05. json-collection-views.sql`
-
-Shows how to build relational views over JSON tables and how to work with JSON collection views using aggregations such as `SUM`, `AVG`, `GROUP BY`, and window functions.
-
-### `06. json-materialized-views.sql`
-
-Covers performance patterns with materialized views over JSON data, including:
-
-* Expanding `PURCHASEORDERS` JSON documents and their `LineItems` arrays with `JSON_TABLE`
-* Fast-refresh materialized views that use either source `ROWID` or the collection document identifier (`RESID`)
-* Explain-plan examples that show materialized-view access
-* Automatic query rewrite for `JSON_EXISTS` predicates on purchase-order and line-item fields
-* A composite index on projected `USERID`, `UPC_CODE`, and `QUANTITY` columns
-* An aggregation materialized view that precomputes purchase-order line-item totals
-* An embedded-document search pattern that materializes each `LineItems[*]` object as a row, combining an Oracle Text index on `DESCRIPTION` with structured price and quantity filters
-
-The query-rewrite examples show how Oracle can first filter the relationalized materialized view, then retrieve only the matching source JSON document. Confirm rewrite by inspecting the execution plan for `MV_FOR_QUERY_REWRITE`.
-
-The line-item search example keeps its text and structured predicates on the same materialized line-item row, avoiding cross-element matches in the source JSON array.
-
-### `07. json-dataguide.sql`
-
-Demonstrates `JSON_DATAGUIDE` use cases, including:
-
-* Creating relational views from JSON dataguides
-* Projecting scalar fields using path expressions
-
-### `08. json-partitioning.sql`
-
-Examples for partitioning JSON collection tables.
-
-### `09. json-compression.sql`
-
-Demonstrates JSON collection table compression options, including:
-
-* `COMPRESSION MEDIUM`
-* `COMPRESSION HIGH`
-
-### `10. json-montoring.sql`
-
-Shows how to monitor JSON queries using SQL Monitor reports and `DBMS_SQLDIAG`.
-
-### `11. iot-json-archive.sql`
-
-Demonstrates how to archive and manage IoT-style JSON data in Oracle Database, including:
-* JSON-based IoT event storage
-* Time-series style archival patterns
-* JSON querying for device telemetry
-* Archive table management techniques
-* Efficient handling of high-volume JSON payloads
-
-### `README.md`
-
-High-level project documentation. It explains the repository theme, the feature areas covered, and links the examples together as a learning path.
-
-### `LICENSE.txt`
-
-Contains the Universal Permissive License (UPL), Version 1.0.
-
-## Main Topics Covered with links to Oracle docs
-
-* [Oracle JSON tables](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-in-oracle-database.html)
-* [JSON querying](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/query-json-data.html)
-* [JSON indexing](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/indexes-for-json-data.html)
-* [Relational duality views](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-relational-duality-views.html)
-* [JSON collection views](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-collection-views.html)
-* [Materialized views on JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/materialized-views-json-data.html)
-* [JSON dataguide](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-dataguide.html)
-* [Partitioning JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/partitioning-json-data.html)
-* [JSON compression](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/compression-json-data.html)
-* [Query monitoring](https://docs.oracle.com/en/database/oracle/oracle-database/26/tgsql/monitoring-and-tuning-sql.html)
- 
-
-## Summary
-
-This repository reads like a practical Oracle JSON workshop: each SQL file focuses on one feature area and builds a clear story around how JSON can be stored, queried, optimized, monitored, and archived in Oracle Database, including modern IoT-style JSON workloads.
+- [Oracle JSON in the database](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-in-oracle-database.html)
+- [Query JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/query-json-data.html)
+- [Index JSON data](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/overview-indexing-json-data.html)
+- [JSON-relational duality views](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-relational-duality-views.html)
+- [JSON data guides](https://docs.oracle.com/en/database/oracle/oracle-database/26/adjsn/json-dataguide.html)
