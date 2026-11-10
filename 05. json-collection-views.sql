@@ -29,8 +29,9 @@ ADDRESS         JSON
 
 -- Querying the Relational View PURCHASEORDER_V
 
-SELECT po_v.ponumber, po_v.REQUESTOR, po_v.SPECIAL, po_v.address.city FROM PURCHASEORDER_V po_v WHERE ponumber = 7;
-PURCHASEORDER_V po_v WHERE po_v.ponumber = 7;
+SELECT po_v.ponumber, po_v.REQUESTOR, po_v.SPECIAL, po_v.address.city
+      FROM PURCHASEORDER_V po_v WHERE ponumber = 7;
+ 
 /*
   PONUMBER REQUESTOR      SPECIAL       CITY                     
 ___________ ______________ _____________ ________________________ 
