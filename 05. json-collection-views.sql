@@ -30,7 +30,7 @@ ADDRESS         JSON
 -- Querying the Relational View PURCHASEORDER_V
 
 SELECT po_v.ponumber, po_v.REQUESTOR, po_v.SPECIAL, po_v.address.city
-      FROM PURCHASEORDER_V po_v WHERE ponumber = 7;
+     FROM PURCHASEORDER_V po_v WHERE ponumber = 7;
  
 /*
   PONUMBER REQUESTOR      SPECIAL       CITY                     
@@ -61,7 +61,8 @@ CREATE JSON COLLECTION VIEW PURCHASEORDER_CV  AS
                     ));
 
                     
---- Query the View                     
+ -- Querying the JSON COLLECTION VIEW : PURCHASEORDER_CV
+
 SELECT 
     JSON_VALUE(po.DATA, '$.requestor') AS requestor,
     JSON_VALUE(po.DATA, '$.ponumber') AS ponumber,
@@ -163,6 +164,14 @@ CREATE OR REPLACE JSON COLLECTION VIEW PURCHASEORDER_AVG_PRC_CV AS
 ;
 
 --  Querying the JSON COLLECTION VIEW : PURCHASEORDER_AVG_PRC_CV
+col ponumber format 9999
+col itemnumber format 9999
+col itemdesc format a40
+col quantity format 9999
+col unitprice format 9999.99
+col total_item_price format 9999.99
+col average_total_item_price format 9999.99     
+
 SELECT po.DATA.ponumber,
        po.DATA.itemnumber,
        po.DATA.itemdesc,
